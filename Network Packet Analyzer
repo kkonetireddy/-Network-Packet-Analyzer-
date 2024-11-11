@@ -1,0 +1,103 @@
+#include <pcap.h>
+#include <iostream>
+#include <netinet/ip.h>
+#include <netinet/tcp.h>
+#include <netinet/udp.h>
+#include <arpa/inet.h>
+#include <cstring>
+
+void packet_handler(u_char *user_data, const struct pcap_pkthdr *pkthdr, const u_char *packet) 
+{
+    struct ip *iph = (struct ip *)(packet + 14);    
+    char src_ip[INET_ADDRSTRLEN], dst_ip[INET_ADDRSTRLEN];
+
+    // Convert IP addresses to human-readable format
+    inet_ntop(AF_INET, &(iph->ip_src), src_ip, INET_ADDRSTRLEN);
+    inet_ntop(AF_INET, &(iph->ip_dst), dst_ip, INET_ADDRSTRLEN);
+    
+    std::cout << "\nPacket captured:\n";
+    std::cout << "Source IP: " << src_ip << "\n";
+    std::cout << "Destination IP: " << dst_ip << "\n";
+
+    // Check the protocol and print the respective header details
+    if (iph->ip_p == IPPROTO_TCP) 
+    {
+        std::cout << "Protocol: TCP\n";
+        struct tcphdr *tcph = (struct tcphdr *)(packet + 14 + iph->ip_hl * 4);
+        std::cout << "Source Port: " << ntohs(tcph->source) << "\n";
+        std::cout << "Destination Port: " << ntohs(tcph->dest) << "\n";
+        
+        // Calculate and print the payload
+        const u_char *payload = packet + 14 + iph->ip_hl * 4 + sizeof(struct tcphdr);
+        int payload_size = ntohs(iph->ip_len) - (iph->ip_hl * 4 + sizeof(struct tcphdr));
+        
+        std::cout << "Payload: ";
+        if (payload_size > 0) 
+        {
+            for (int i = 0; i < payload_size; i++) 
+            {
+                std::cout << std::hex << static_cast<int>(payload[i]) << " ";       
+            }
+            std::cout << "\n";
+        }
+        else
+        {
+            std::cout << "No payload\n";
+        }
+    }
+    else if (iph->ip_p == IPPROTO_UDP)
+    {
+        std::cout << "Protocol: UDP\n";
+        struct udphdr *udph = (struct udphdr *)(packet + 14 + iph->ip_hl * 4);        
+        std::cout << "Source Port: " << ntohs(udph->source) << "\n";
+        std::cout << "Destination Port: " << ntohs(udph->dest) << "\n";
+        
+        // Calculate and print the payload
+        const u_char *payload = packet + 14 + iph->ip_hl * 4 + sizeof(struct udphdr);
+        int payload_size = ntohs(iph->ip_len) - (iph->ip_hl * 4 + sizeof(struct udphdr));
+        
+        std::cout << "Payload: ";
+        if (payload_size > 0) 
+        {
+            for (int i = 0; i < payload_size; i++) 
+            {
+                std::cout << std::hex << static_cast<int>(payload[i]) << " ";       
+            }
+            std::cout << "\n";
+        }
+        else
+        {
+            std::cout << "No payload\n";
+        }
+    }
+    else
+    {
+        std::cout << "Protocol: Other\n";
+    }
+}
+
+int main() 
+{
+    pcap_t *handle;
+    char error_buffer[PCAP_ERRBUF_SIZE];
+    char *device = pcap_lookupdev(error_buffer);
+
+    if (device == nullptr)
+    {
+        std::cerr << "Error finding device: " << error_buffer << "\n";
+        return 1;
+    }
+    
+    std::cout << "Capturing on device: " << device << "\n";
+    
+    handle = pcap_open_live(device, BUFSIZ, 1, 1000, error_buffer);
+    if (handle == nullptr) 
+    {
+        std::cerr << "Error opening device: " << error_buffer << "\n";
+        return 2;
+    }
+    
+    pcap_loop(handle, 0, packet_handler, nullptr);
+    pcap_close(handle);
+    return 0;
+}
